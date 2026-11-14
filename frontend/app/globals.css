@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { background: #F5F3ED; color: #1E1F1D; -webkit-text-size-adjust: 100%; }
+  body { @apply font-sans antialiased; min-height: 100dvh; overflow-x: hidden; }
+  h1, h2, h3 { @apply font-serif; letter-spacing: -0.01em; }
+  :focus-visible { outline: 2px solid #5C7C47; outline-offset: 2px; border-radius: 6px; }
+  ::selection { background: #D6E85A; color: #1E1F1D; }
+}
+
+/* Réduction des animations : préférence système OU réglage de l'application */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: 0.01ms !important; transition-duration: 0.01ms !important;
+}
+
+@keyframes hs-spin { to { transform: rotate(360deg); } }
+.hs-spin { animation: hs-spin 0.9s linear infinite; }
