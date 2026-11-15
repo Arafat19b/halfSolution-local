@@ -1,5 +1,6 @@
 import { AnalysisPageClient } from "@/components/analysis/AnalysisPageClient";
 
-export default function AnalysisPage({ params }: { params: { id: string } }) {
-  return <AnalysisPageClient id={params.id} />;
+export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <AnalysisPageClient id={id} />;
 }
