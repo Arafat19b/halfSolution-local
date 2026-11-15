@@ -1,7 +1,7 @@
 """
 Exécution asynchrone des analyses.
 
-Supporte deux moteurs LLM : Ollama (local) et Groq (cloud).
+Supporte deux moteurs LLM : Groq (cloud, avec fallback multi-modèles) et Ollama (local).
 Le moteur actif est déterminé par LLM_ENGINE dans settings.py.
 """
 import threading
@@ -14,6 +14,7 @@ from analysis.monetization import build_opportunities
 from core.capability_tester import evaluate_tasks
 from core.groq_engine import GroqClient
 from core.llm_engine import OllamaClient
+from core.router import RouterClient
 from core.scoring import calculate_score
 from core.task_extractor import extract_tasks
 
@@ -41,6 +42,7 @@ def _new_progress() -> dict:
         "steps": [{"key": k, "label": l, "status": "pending"} for k, l in STEPS],
         "tasks_total": None,
         "tasks_done": 0,
+        "active_model": None,  # modèle LLM qui a répondu en dernier
     }
 
 
@@ -49,6 +51,11 @@ def _set_step(job: dict, key: str, status: str) -> None:
         for s in job["progress"]["steps"]:
             if s["key"] == key:
                 s["status"] = status
+
+
+def _update_active_model(job: dict, model: str) -> None:
+    with _lock:
+        job["progress"]["active_model"] = model
 
 
 def create_job(payload: dict) -> dict:
@@ -73,19 +80,30 @@ def get_job(job_id: str) -> Optional[dict]:
         return _jobs.get(job_id)
 
 
-def _make_client():
-    """Instancie le bon client LLM selon la configuration."""
-    if settings.LLM_ENGINE == "groq":
-        return GroqClient(
-            api_key=settings.GROQ_API_KEY,
-            model=settings.GROQ_MODEL,
-            timeout=settings.GROQ_TIMEOUT,
-        )
-    return OllamaClient(
+def _make_client() -> RouterClient:
+    """
+    Construit un RouterClient avec tous les modèles configurés.
+    - Groq : un GroqClient par modèle dans GROQ_MODELS (cascade automatique).
+    - Ollama : un seul OllamaClient en dernier recours si LLM_ENGINE != groq.
+    """
+    clients = []
+
+    if settings.LLM_ENGINE == "groq" and settings.GROQ_API_KEY:
+        for model in settings.GROQ_MODELS:
+            clients.append(GroqClient(
+                api_key=settings.GROQ_API_KEY,
+                model=model,
+                timeout=settings.GROQ_TIMEOUT,
+            ))
+
+    # Ollama toujours ajouté en dernier recours si disponible
+    clients.append(OllamaClient(
         settings.OLLAMA_BASE_URL,
         settings.OLLAMA_MODEL,
         settings.OLLAMA_TIMEOUT,
-    )
+    ))
+
+    return RouterClient(clients)
 
 
 def _run(job: dict, payload: dict) -> None:
@@ -95,21 +113,21 @@ def _run(job: dict, payload: dict) -> None:
 
         _set_step(job, current, "running")
         client.check_connection()
+        _update_active_model(job, client.model)
         _set_step(job, current, "done")
 
         current = "extraction"
         _set_step(job, current, "running")
         tasks = extract_tasks(client, payload)
+        _update_active_model(job, client.model)
         with _lock:
             job["progress"]["tasks_total"] = len(tasks)
         _set_step(job, current, "done")
 
         current = "evaluation"
         _set_step(job, current, "running")
-        with _lock:
-            job["progress"]["tasks_total"] = len(tasks)
-        # Un seul appel LLM pour toutes les tâches
         evaluations = evaluate_tasks(client, payload, tasks)
+        _update_active_model(job, client.model)
         with _lock:
             job["progress"]["tasks_done"] = len(evaluations)
         _set_step(job, current, "done")
@@ -129,12 +147,14 @@ def _run(job: dict, payload: dict) -> None:
             "score": score,
             "evaluations": evaluations,
             "monetization_opportunities": opportunities,
+            "model_used": client.model,
             "methodology_note": "LLM-estimated; not empirically benchmarked.",
         }
         with _lock:
             job["result"] = result
             job["status"] = "done"
-    except Exception as exc:  # noqa: BLE001 - on veut toute erreur du moteur
+
+    except Exception as exc:  # noqa: BLE001
         _set_step(job, current, "error")
         with _lock:
             job["error"] = {**classify_error(exc), "step": current}

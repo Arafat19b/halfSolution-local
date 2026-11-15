@@ -28,15 +28,16 @@ def health():
 def config():
     engine = settings.LLM_ENGINE
     if engine == "groq":
-        model = settings.GROQ_MODEL
+        models = settings.GROQ_MODELS
         timeout = settings.GROQ_TIMEOUT
     else:
-        model = settings.OLLAMA_MODEL
+        models = [settings.OLLAMA_MODEL]
         timeout = settings.OLLAMA_TIMEOUT
 
     data = {
-        "model": model,
         "engine": engine,
+        "model": models[0] if models else "—",   # modèle prioritaire
+        "models": models,                          # liste complète pour l'UI
         "timeout_seconds": timeout,
         "opportunity_threshold": 60,
     }
@@ -48,17 +49,17 @@ def config():
 @app.get("/api/ollama/status")
 def ollama_status():
     """
-    Toujours 200. Si le moteur actif est Groq, retourne connected=True directement
-    (la clé est vérifiée au démarrage de l'analyse). Sinon interroge Ollama.
+    Toujours 200. Retourne l'état de tous les modèles configurés.
     """
     if settings.LLM_ENGINE == "groq":
         has_key = bool(settings.GROQ_API_KEY)
         return {
             "engine": "groq",
             "connected": has_key,
-            "model": settings.GROQ_MODEL,
+            "model": settings.GROQ_MODELS[0] if settings.GROQ_MODELS else "—",
+            "models": settings.GROQ_MODELS,
             "model_available": has_key,
-            "installed_models": [settings.GROQ_MODEL] if has_key else [],
+            "installed_models": settings.GROQ_MODELS if has_key else [],
             "error": None if has_key else {
                 "code": "missing_api_key",
                 "message": "GROQ_API_KEY absent du fichier .env.",
