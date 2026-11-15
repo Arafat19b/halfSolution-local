@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: halfsolution-api
+    runtime: python
+    region: frankfurt       # Europe — plus proche pour la plupart des utilisateurs
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false         # À saisir manuellement dans le dashboard Render (onglet Environment)
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: LLM_ENGINE
+        value: groq
+      - key: GROQ_TIMEOUT
+        value: "60"
+      - key: CORS_ORIGINS
+        sync: false         # À renseigner après déploiement Vercel : https://your-app.vercel.app
+      - key: MAX_JOBS_IN_MEMORY
+        value: "50"
+      - key: EXPOSE_OLLAMA_URL
+        value: "false"

@@ -48,9 +48,12 @@ function triggerDownload(url: string, filename: string) {
 }
 
 function makePdfDoc(): JsPDFInstance {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { jsPDF } = require("jspdf") as { jsPDF: new (o?: unknown) => JsPDFInstance };
-  return new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  // jsPDF n'expose pas d'export ESM natif — require() est intentionnel ici
+  /* eslint-disable */
+  const jsPDFModule = require("jspdf");
+  /* eslint-enable */
+  const JsPDFCtor = jsPDFModule.jsPDF ?? jsPDFModule.default?.jsPDF ?? jsPDFModule;
+  return new JsPDFCtor({ orientation: "portrait", unit: "mm", format: "a4" }) as JsPDFInstance;
 }
 
 function writeAnalysis(doc: JsPDFInstance, result: AnalysisResult, createdAt: string, startY: number): number {
